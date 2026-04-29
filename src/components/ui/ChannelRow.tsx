@@ -4,20 +4,30 @@ import React, { useRef } from 'react';
 import { ChannelData as Channel } from '@/lib/iptvApi';
 import { useStore } from '@/store/useStore';
 import { useRouter } from 'next/navigation';
-import { Play, Grid } from 'lucide-react';
+import { Play, Grid, PictureInPicture2 } from 'lucide-react';
 
 interface ChannelCardProps {
   channel: Channel;
 }
 
 export function ChannelCard({ channel }: ChannelCardProps) {
-  const { setCurrentChannel, addToHistory } = useStore();
+  const { setCurrentChannel, addToHistory, setMiniMode } = useStore();
   const router = useRouter();
 
+  // Full-screen play: navigate to /player
   const handlePlay = () => {
     setCurrentChannel(channel);
     addToHistory(channel);
+    setMiniMode(false); // Ensure mini mode is off
     router.push('/player');
+  };
+
+  // PiP / Mini player: stay on current page
+  const handleMiniPlayer = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentChannel(channel);
+    addToHistory(channel);
+    setMiniMode(true); // Activate mini mode
   };
 
   const handleAddToMultiView = (e: React.MouseEvent) => {
@@ -45,6 +55,7 @@ export function ChannelCard({ channel }: ChannelCardProps) {
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
         <h3 className="text-white font-bold truncate">{channel.name}</h3>
         <div className="flex items-center space-x-2 mt-2">
+          {/* Primary: Full-screen play */}
           <button 
             tabIndex={-1}
             onClick={handlePlay}
@@ -53,6 +64,16 @@ export function ChannelCard({ channel }: ChannelCardProps) {
             <Play fill="currentColor" size={14} />
             <span>Play</span>
           </button>
+          {/* PiP mini player */}
+          <button 
+            tabIndex={-1}
+            onClick={handleMiniPlayer}
+            className="p-1.5 bg-zinc-800 text-white rounded hover:bg-zinc-700 hover:text-blue-400"
+            title="Picture-in-Picture"
+          >
+            <PictureInPicture2 size={18} />
+          </button>
+          {/* Multi-view */}
           <button 
             tabIndex={-1}
             onClick={handleAddToMultiView}

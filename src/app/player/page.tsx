@@ -5,13 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useStore } from '@/store/useStore';
 import { ChannelData as Channel } from '@/lib/iptvApi';
 import HlsPlayer from '@/components/player/HlsPlayer';
-import { ArrowLeft, Heart, X, Search as SearchIcon, Loader2 } from 'lucide-react';
+import { ArrowLeft, Heart, X, Search as SearchIcon, Loader2, PictureInPicture2 } from 'lucide-react';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
 
 export default function PlayerPage() {
   useSpatialNavigation();
   const router = useRouter();
-  const { currentChannel, isFavorite, toggleFavorite, setCurrentChannel } = useStore();
+  const { currentChannel, isFavorite, toggleFavorite, setCurrentChannel, setMiniMode } = useStore();
   const [sourceIndex, setSourceIndex] = useState(0);
 
   // Selection Modal State
@@ -21,7 +21,9 @@ export default function PlayerPage() {
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
-    if (!currentChannel) {
+    // Redirect if no channel, or if channel is stale (old M3U format had .sources not .streams)
+    if (!currentChannel || !currentChannel.streams) {
+      setCurrentChannel(null);
       router.push('/');
     }
   }, [currentChannel, router]);
@@ -102,7 +104,6 @@ export default function PlayerPage() {
           <HlsPlayer 
             src={streamSrc} 
             autoPlay={true} 
-            controls={true}
             className="w-full h-full"
             onStreamError={handleStreamError}
           />
@@ -122,6 +123,17 @@ export default function PlayerPage() {
             className="px-6 py-2 bg-zinc-800/80 text-white rounded font-medium hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-600 backdrop-blur"
           >
             Change Channel
+          </button>
+          <button
+            onClick={() => {
+              setMiniMode(true);
+              router.push('/');
+            }}
+            className="flex items-center space-x-2 px-6 py-2 bg-zinc-800/80 text-white rounded font-medium hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur"
+            title="Picture-in-Picture"
+          >
+            <PictureInPicture2 size={18} />
+            <span>PiP</span>
           </button>
           <button
             onClick={() => router.push(`/multiview?add=${encodeURIComponent(currentChannel.id)}`)}

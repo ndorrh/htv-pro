@@ -6,6 +6,7 @@ interface StoreState {
   favorites: string[];
   history: Channel[];
   currentChannel: Channel | null;
+  isMiniMode: boolean; // true = show mini player, false = went to full player page
   multiViewChannels: (Channel | null)[]; // Fixed length 4 array
   focusedPlayerIndex: number;
   
@@ -17,6 +18,8 @@ interface StoreState {
   
   addToHistory: (channel: Channel) => void;
   setCurrentChannel: (channel: Channel | null) => void;
+  // Activates PiP/mini player mode explicitly
+  setMiniMode: (active: boolean) => void;
   
   setMultiViewChannel: (index: number, channel: Channel | null) => void;
   setFocusedPlayerIndex: (index: number) => void;
@@ -28,6 +31,7 @@ export const useStore = create<StoreState>()(
       favorites: [],
       history: [],
       currentChannel: null,
+      isMiniMode: false,
       multiViewChannels: [null, null, null, null],
       focusedPlayerIndex: 0,
 
@@ -44,13 +48,16 @@ export const useStore = create<StoreState>()(
       isFavorite: (id) => get().favorites.includes(id),
 
       addToHistory: (channel) => set((state) => {
-        // Remove if it already exists to move it to the front
         const filteredHistory = state.history.filter(c => c.id !== channel.id);
         const newHistory = [channel, ...filteredHistory].slice(0, 50); // Keep last 50
         return { history: newHistory };
       }),
 
+      // Normal play: set channel but NOT mini mode — caller navigates to /player
       setCurrentChannel: (channel) => set({ currentChannel: channel }),
+
+      // Explicitly activate PiP mini player
+      setMiniMode: (active) => set({ isMiniMode: active }),
 
       setMultiViewChannel: (index, channel) => set((state) => {
         const newMultiView = [...state.multiViewChannels];
@@ -62,11 +69,11 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'htv-pro-storage',
-      // Only persist these specific fields
       partialize: (state) => ({ 
         favorites: state.favorites, 
         history: state.history,
-        currentChannel: state.currentChannel
+        currentChannel: state.currentChannel,
+        isMiniMode: state.isMiniMode,
       }),
     }
   )

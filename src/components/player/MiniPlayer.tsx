@@ -7,25 +7,27 @@ import HlsPlayer from './HlsPlayer';
 import { X, Maximize2 } from 'lucide-react';
 
 export default function MiniPlayer() {
-  const { currentChannel, setCurrentChannel } = useStore();
+  const { currentChannel, isMiniMode, setMiniMode, setCurrentChannel } = useStore();
   const pathname = usePathname();
   const router = useRouter();
 
-  // Don't show mini player if we are explicitly on the fullscreen player page
-  // We'll assume the player page is /player
   const isPlayerPage = pathname === '/player';
   const isMultiViewPage = pathname === '/multiview';
 
-  if (!currentChannel || isPlayerPage || isMultiViewPage || !currentChannel.streams?.length) {
+  // Only show mini player if explicitly in mini mode, not on the full player or multiview page,
+  // and there is a current channel with at least one stream
+  if (!isMiniMode || !currentChannel || !currentChannel.streams?.length || isPlayerPage || isMultiViewPage) {
     return null;
   }
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setMiniMode(false);
     setCurrentChannel(null);
   };
 
   const handleExpand = () => {
+    setMiniMode(false);
     router.push('/player');
   };
 
@@ -42,9 +44,10 @@ export default function MiniPlayer() {
     >
       <div className="absolute top-2 right-2 flex space-x-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
         <button 
-          onClick={handleExpand}
+          onClick={(e) => { e.stopPropagation(); handleExpand(); }}
           className="bg-black/60 p-1.5 rounded-full text-white hover:text-red-500 hover:bg-black/80"
           tabIndex={0}
+          title="Go fullscreen"
         >
           <Maximize2 size={16} />
         </button>
@@ -52,6 +55,7 @@ export default function MiniPlayer() {
           onClick={handleClose}
           className="bg-black/60 p-1.5 rounded-full text-white hover:text-red-500 hover:bg-black/80"
           tabIndex={0}
+          title="Close"
         >
           <X size={16} />
         </button>
