@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useStore } from '@/store/useStore';
 import { ChannelData as Channel } from '@/lib/iptvApi';
 import HlsPlayer from '@/components/player/HlsPlayer';
-import { ArrowLeft, Heart, X, Search as SearchIcon, Loader2, PictureInPicture2 } from 'lucide-react';
+import { ArrowLeft, Heart, X, Search as SearchIcon, Loader2, PictureInPicture2, ListVideo, Grid } from 'lucide-react';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
 
 export default function PlayerPage() {
@@ -72,28 +72,65 @@ export default function PlayerPage() {
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      {/* Top Bar Overlay */}
-      <div className="absolute top-0 left-0 right-0 p-6 bg-gradient-to-b from-black/80 to-transparent z-10 flex justify-between items-center opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 pointer-events-none">
+      {/* Top Bar Overlay — all controls live here, no bottom overlap */}
+      <div className="absolute top-0 left-0 right-0 p-6 bg-gradient-to-b from-black/90 to-transparent z-10 flex justify-between items-start opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 pointer-events-none">
+        {/* Left: Back */}
         <button 
           tabIndex={0}
           onClick={() => router.push('/')}
           className="flex items-center space-x-2 text-white hover:text-red-500 focus:outline-none focus:ring-4 focus:ring-red-600 rounded-lg p-2 pointer-events-auto"
         >
           <ArrowLeft size={24} />
-          <span className="text-lg font-medium">Back to Browse</span>
+          <span className="text-lg font-medium">Back</span>
         </button>
 
-        <div className="flex items-center space-x-4 pointer-events-auto">
-          <div className="text-right">
-            <h2 className="text-xl font-bold text-white">{currentChannel.name}</h2>
-            <p className="text-sm text-zinc-400">{currentChannel.categories?.[0] || 'Uncategorized'}</p>
+        {/* Right: Channel info + actions */}
+        <div className="flex items-center space-x-3 pointer-events-auto">
+          <div className="text-right mr-2">
+            <h2 className="text-lg font-bold text-white">{currentChannel.name}</h2>
+            <p className="text-xs text-zinc-400">{currentChannel.categories?.[0] || 'Uncategorized'}</p>
           </div>
+
+          {/* Favourite */}
           <button 
             tabIndex={0}
             onClick={() => toggleFavorite(currentChannel.id)}
-            className={`p-3 rounded-full focus:outline-none focus:ring-4 focus:ring-red-600 transition-colors ${favorite ? 'text-red-500 bg-red-500/20' : 'text-white hover:text-red-500 bg-zinc-800/80 hover:bg-zinc-800'}`}
+            title={favorite ? 'Remove favourite' : 'Add favourite'}
+            className={`p-2.5 rounded-full focus:outline-none focus:ring-4 focus:ring-red-600 transition-colors ${
+              favorite ? 'text-red-500 bg-red-500/20' : 'text-white hover:text-red-500 bg-black/40 hover:bg-black/60'
+            }`}
           >
-            <Heart size={24} fill={favorite ? "currentColor" : "none"} />
+            <Heart size={20} fill={favorite ? 'currentColor' : 'none'} />
+          </button>
+
+          {/* Change Channel */}
+          <button
+            tabIndex={0}
+            onClick={() => setIsSelectingChannel(true)}
+            title="Change channel"
+            className="p-2.5 rounded-full bg-black/40 hover:bg-black/60 text-white hover:text-red-400 focus:outline-none focus:ring-4 focus:ring-red-600 transition-colors"
+          >
+            <ListVideo size={20} />
+          </button>
+
+          {/* PiP */}
+          <button
+            tabIndex={0}
+            onClick={() => { setMiniMode(true); router.push('/'); }}
+            title="Picture-in-Picture"
+            className="p-2.5 rounded-full bg-black/40 hover:bg-black/60 text-white hover:text-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500 transition-colors"
+          >
+            <PictureInPicture2 size={20} />
+          </button>
+
+          {/* Multi-View */}
+          <button
+            tabIndex={0}
+            onClick={() => router.push(`/multiview?add=${encodeURIComponent(currentChannel.id)}`)}
+            title="Open in Multi-View"
+            className="p-2.5 rounded-full bg-red-600/80 hover:bg-red-600 text-white focus:outline-none focus:ring-4 focus:ring-red-600 transition-colors"
+          >
+            <Grid size={20} />
           </button>
         </div>
       </div>
@@ -115,34 +152,7 @@ export default function PlayerPage() {
         )}
       </div>
 
-      {/* Bottom Bar Overlay */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent z-10 flex items-center justify-center opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 pointer-events-none">
-        <div className="flex space-x-4 pointer-events-auto">
-          <button
-            onClick={() => setIsSelectingChannel(true)}
-            className="px-6 py-2 bg-zinc-800/80 text-white rounded font-medium hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-600 backdrop-blur"
-          >
-            Change Channel
-          </button>
-          <button
-            onClick={() => {
-              setMiniMode(true);
-              router.push('/');
-            }}
-            className="flex items-center space-x-2 px-6 py-2 bg-zinc-800/80 text-white rounded font-medium hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur"
-            title="Picture-in-Picture"
-          >
-            <PictureInPicture2 size={18} />
-            <span>PiP</span>
-          </button>
-          <button
-            onClick={() => router.push(`/multiview?add=${encodeURIComponent(currentChannel.id)}`)}
-            className="px-6 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-white"
-          >
-            Open in Multi-View
-          </button>
-        </div>
-      </div>
+
 
       {/* Channel Selection Modal */}
       {isSelectingChannel && (

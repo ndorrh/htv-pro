@@ -6,7 +6,7 @@ import { useStore } from '@/store/useStore';
 import { ChannelData as Channel } from '@/lib/iptvApi';
 import HlsPlayer from '@/components/player/HlsPlayer';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
-import { Plus, X, AlertTriangle, Volume2, Search as SearchIcon, Loader2 } from 'lucide-react';
+import { Plus, X, AlertTriangle, Volume2, Search as SearchIcon, Loader2, ListVideo } from 'lucide-react';
 
 function MultiViewContent() {
   useSpatialNavigation();
@@ -116,22 +116,45 @@ function MultiViewContent() {
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-yellow-900/90 border border-yellow-700 text-yellow-100 px-6 py-3 rounded-lg shadow-2xl flex items-center space-x-4 max-w-2xl">
           <AlertTriangle className="text-yellow-400 shrink-0" />
           <div className="text-sm">
-            <p className="font-bold">Hardware Performance Warning</p>
-            <p>Playing multiple video streams simultaneously requires significant network bandwidth and hardware decoding capabilities. You may experience buffering or degraded quality.</p>
+            <p className="font-bold">Performance Warning</p>
+            <p>Playing multiple streams requires significant network bandwidth.</p>
           </div>
-          <button onClick={() => setShowWarning(false)} className="text-yellow-400 hover:text-white p-1">
+          <button onClick={() => setShowWarning(false)} className="text-yellow-400 hover:text-white p-1 ml-2">
             <X size={20} />
           </button>
         </div>
       )}
 
-      {/* Main Grid */}
-      <div className={`flex-1 grid ${gridCols} ${gridRows} gap-1 p-1 bg-zinc-950`}>
+      {/* Always-visible 2×2 grid — all 4 slots */}
+      <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-1 p-1 bg-zinc-950">
         {multiViewChannels.map((channel, i) => {
-          if (!channel) return null;
-          
           const isFocused = focusedPlayerIndex === i;
-          
+
+          // ── Empty slot: always visible with an Add button overlay ──────
+          if (!channel) {
+            return (
+              <div
+                key={`slot-${i}`}
+                onClick={() => setSelectingForSlot(i)}
+                className="relative bg-zinc-950 rounded-sm overflow-hidden border-2 border-dashed border-zinc-800 hover:border-zinc-600 focus:border-red-600 transition-colors cursor-pointer group flex flex-col items-center justify-center"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter') setSelectingForSlot(i); }}
+                aria-label={`Add channel to screen ${i + 1}`}
+              >
+                <div className="flex flex-col items-center justify-center text-zinc-600 group-hover:text-zinc-300 transition-colors space-y-3">
+                  <div className="w-16 h-16 rounded-full border-2 border-dashed border-zinc-700 group-hover:border-zinc-400 flex items-center justify-center transition-colors">
+                    <Plus size={32} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold text-sm">Screen {i + 1}</p>
+                    <p className="text-xs text-zinc-700 mt-1">Click to add channel</p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // ── Filled slot ───────────────────────────────────────────────
           return (
             <div 
               key={`slot-${i}`} 
@@ -145,46 +168,42 @@ function MultiViewContent() {
                 className="w-full h-full object-contain bg-black"
               />
               
-              {/* Overlay UI */}
-              <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-start opacity-0 hover:opacity-100 transition-opacity">
+              {/* Hover overlay: channel info + controls */}
+              <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-start opacity-0 hover:opacity-100 transition-opacity">
                 <div className="flex items-center space-x-2">
                   <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">LIVE</span>
-                  <span className="text-white font-semibold drop-shadow-md">{channel.name}</span>
+                  <span className="text-white text-sm font-semibold drop-shadow-md truncate max-w-[150px]">{channel.name}</span>
                 </div>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeChannel(i);
-                  }}
-                  className="bg-black/50 text-white hover:bg-red-600 p-1.5 rounded transition-colors"
-                  title="Remove Screen"
-                >
-                  <X size={16} />
-                </button>
+                <div className="flex items-center space-x-1">
+                  {/* Replace channel */}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setSelectingForSlot(i); }}
+                    className="bg-black/50 text-white hover:bg-zinc-700 p-1.5 rounded transition-colors"
+                    title="Replace channel"
+                  >
+                    <ListVideo size={15} />
+                  </button>
+                  {/* Remove */}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); removeChannel(i); }}
+                    className="bg-black/50 text-white hover:bg-red-600 p-1.5 rounded transition-colors"
+                    title="Remove screen"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
               </div>
 
-              {/* Audio Indicator */}
+              {/* Audio indicator */}
               {isFocused && (
-                <div className="absolute bottom-4 right-4 bg-red-600/90 text-white px-2 py-1 rounded flex items-center space-x-1 shadow-lg backdrop-blur-sm">
-                  <Volume2 size={14} />
-                  <span className="text-xs font-bold">Audio Active</span>
+                <div className="absolute bottom-3 right-3 bg-red-600/90 text-white px-2 py-1 rounded flex items-center space-x-1 shadow-lg backdrop-blur-sm">
+                  <Volume2 size={12} />
+                  <span className="text-xs font-bold">Audio</span>
                 </div>
               )}
             </div>
           );
         })}
-
-        {/* Add Screen Button (if less than 4) */}
-        {activeCount < 4 && !selectingForSlot && (
-          <div 
-            onClick={handleAddScreen}
-            className="border-2 border-dashed border-zinc-800 hover:border-zinc-600 bg-zinc-900/30 rounded flex flex-col items-center justify-center cursor-pointer transition-colors group text-zinc-500 hover:text-zinc-300"
-          >
-            <Plus size={48} className="mb-2 group-hover:scale-110 transition-transform" />
-            <span className="font-semibold">Add Channel to View</span>
-            <span className="text-xs text-zinc-600 mt-1">{4 - activeCount} slots remaining</span>
-          </div>
-        )}
       </div>
 
       {/* Channel Selection Modal */}
