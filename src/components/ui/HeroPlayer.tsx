@@ -22,7 +22,7 @@ export default function HeroPlayer({ channel, onStreamError }: HeroPlayerProps) 
     router.push('/player');
   };
 
-  const streamSrc = channel.streams[0]?.url;
+  const streamSrc = channel?.streams?.[0]?.url;
 
   if (!streamSrc) return null;
 

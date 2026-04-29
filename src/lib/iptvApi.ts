@@ -156,22 +156,36 @@ const cache: Cache = {
 };
 
 const BASE_URL = 'https://iptv-org.github.io/api';
-const ONE_HOUR = 60 * 60 * 1000;
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
-async function fetchJson<T>(endpoint: string): Promise<T[]> {
-  try {
-    const res = await fetch(`${BASE_URL}/${endpoint}`);
-    if (!res.ok) throw new Error(`Failed to fetch ${endpoint}`);
-    return await res.json();
-  } catch (error) {
-    console.error(`Error fetching ${endpoint}:`, error);
-    return [];
+async function fetchJson<T>(endpoint: string, retries = 5, baseDelay = 1000): Promise<T[]> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per request
+      
+      const res = await fetch(`${BASE_URL}/${endpoint}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (error: any) {
+      console.warn(`[API] Attempt ${attempt}/${retries} failed for ${endpoint}: ${error.message}`);
+      if (attempt === retries) {
+        console.error(`[API] All ${retries} attempts failed for ${endpoint}. Returning empty array.`);
+        return [];
+      }
+      // Exponential backoff: 1s, 2s, 4s, 8s
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
+  return [];
 }
 
 export async function refreshCache() {
   const now = Date.now();
-  if (now - cache.lastFetched < ONE_HOUR && cache.channels.length > 0) {
+  if (now - cache.lastFetched < CACHE_TTL && cache.channels.length > 0) {
     return; // Use existing cache
   }
 

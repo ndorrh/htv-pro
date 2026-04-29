@@ -42,7 +42,7 @@ export default function AllChannelsPage() {
     async function fetchChannels() {
       setLoadingChannels(true);
       try {
-        const res = await fetch(`/api/channels?category=${encodeURIComponent(selectedCategory)}&limit=100`);
+        const res = await fetch(`/api/channels?category=${encodeURIComponent(selectedCategory!)}&limit=100`);
         if (res.ok) {
           const data = await res.json();
           setChannels(data.data || []);
