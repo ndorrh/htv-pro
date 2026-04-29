@@ -1,33 +1,40 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
 import { ChannelCard } from '@/components/ui/ChannelRow';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { Loader2, Folder, ArrowLeft } from 'lucide-react';
+import { Loader2, Search as SearchIcon, Filter } from 'lucide-react';
 import { ChannelData as Channel } from '@/lib/iptvApi';
 
 export default function AllChannelsPage() {
   useSpatialNavigation();
   
   const [categories, setCategories] = useState<any[]>([]);
+  const [countries, setCountries] = useState<any[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
   
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [selectedCountry, setSelectedCountry] = useState<string>("All");
   
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [page, setPage] = useState(1);
   const [loadingChannels, setLoadingChannels] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   
-  const parentRef = useRef<HTMLDivElement>(null);
+  const observerTarget = useRef<HTMLDivElement>(null);
 
-  // Fetch categories on mount
+  // Fetch metadata on mount
   useEffect(() => {
     async function fetchMeta() {
       try {
-        const res = await fetch('/api/categories');
-        if (res.ok) setCategories(await res.json());
+        const [catRes, countryRes] = await Promise.all([
+          fetch('/api/categories'),
+          fetch('/api/countries')
+        ]);
+        if (catRes.ok) setCategories(await catRes.json());
+        if (countryRes.ok) setCountries(await countryRes.json());
       } catch (err) {
-        console.error("Failed to load categories", err);
+        console.error("Failed to load metadata", err);
       } finally {
         setLoadingMeta(false);
       }
@@ -35,36 +42,65 @@ export default function AllChannelsPage() {
     fetchMeta();
   }, []);
 
-  // Fetch channels when a category is selected
-  useEffect(() => {
-    if (!selectedCategory) return;
-    
-    async function fetchChannels() {
-      setLoadingChannels(true);
-      try {
-        const res = await fetch(`/api/channels?category=${encodeURIComponent(selectedCategory!)}&limit=100`);
-        if (res.ok) {
-          const data = await res.json();
-          setChannels(data.data || []);
-        }
-      } catch (err) {
-        console.error("Failed to load channels", err);
-      } finally {
-        setLoadingChannels(false);
-      }
-    }
-    fetchChannels();
-  }, [selectedCategory]);
+  // Fetch channels function
+  const fetchChannels = async (pageNum: number, category: string, country: string, isNewFilter: boolean) => {
+    setLoadingChannels(true);
+    try {
+      const params = new URLSearchParams();
+      if (category !== "All") params.append('category', category);
+      if (country !== "All") params.append('country', country);
+      params.append('page', pageNum.toString());
+      params.append('limit', '40'); // Load 40 at a time
 
-  // Virtualization for channel list
-  const itemsPerRow = 5;
-  const rowCount = Math.ceil(channels.length / itemsPerRow);
-  const rowVirtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 200,
-    overscan: 5,
-  });
+      const res = await fetch(`/api/channels?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        const fetchedChannels = data.data || [];
+        
+        if (isNewFilter) {
+          setChannels(fetchedChannels);
+        } else {
+          setChannels(prev => [...prev, ...fetchedChannels]);
+        }
+        
+        setHasMore(fetchedChannels.length === 40); // If we got less than limit, there are no more
+      }
+    } catch (err) {
+      console.error("Failed to load channels", err);
+    } finally {
+      setLoadingChannels(false);
+    }
+  };
+
+  // Effect to reset and fetch when filters change
+  useEffect(() => {
+    setPage(1);
+    setHasMore(true);
+    fetchChannels(1, selectedCategory, selectedCountry, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, selectedCountry]);
+
+  // Infinite Scroll Observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasMore && !loadingChannels) {
+          setPage(prev => {
+            const next = prev + 1;
+            fetchChannels(next, selectedCategory, selectedCountry, false);
+            return next;
+          });
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMore, loadingChannels, selectedCategory, selectedCountry]);
 
   if (loadingMeta) {
     return (
@@ -74,98 +110,78 @@ export default function AllChannelsPage() {
     );
   }
 
-  // View 1: Category Selection Grid
-  if (!selectedCategory) {
-    return (
-      <div className="flex-1 overflow-y-auto bg-zinc-950 p-12 pb-32">
-        <div className="flex justify-between items-end mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-white tracking-tight">Categories</h1>
-            <p className="text-zinc-400 mt-2">Select a category to browse channels</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:bg-red-600/10 hover:border-red-600/50 focus:bg-red-600/20 focus:border-red-600 focus:outline-none focus:ring-4 focus:ring-red-600/30 transition-all group"
-            >
-              <Folder className="w-12 h-12 text-zinc-500 mb-4 group-hover:text-red-500 group-focus:text-red-500 transition-colors" />
-              <h3 className="text-xl font-bold text-white">{cat.name}</h3>
-              <p className="text-zinc-500 mt-2 text-sm max-w-[200px] mx-auto leading-relaxed">
-                {cat.description || "Browse channels"}
-              </p>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // View 2: Channel List inside a Category
   return (
-    <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden">
-      <div className="p-8 pb-4 flex flex-col border-b border-zinc-800 shrink-0">
-        <button 
-          onClick={() => {
-            setSelectedCategory(null);
-            setChannels([]);
-          }}
-          className="flex w-max items-center space-x-2 text-zinc-400 hover:text-white transition-colors mb-4"
-        >
-          <ArrowLeft size={20} />
-          <span>Back to Categories</span>
-        </button>
-        <div className="flex justify-between items-end">
+    <div className="flex-1 flex flex-col bg-zinc-950 overflow-y-auto pb-32">
+      {/* Sticky Header with Filters */}
+      <div className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 p-8 pt-10">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-6">
           <div>
-            <h1 className="text-4xl font-bold text-white tracking-tight">{categories.find(c => c.id === selectedCategory)?.name}</h1>
-            <p className="text-zinc-400 mt-2">{channels.length} channels loaded</p>
+            <h1 className="text-4xl font-bold text-white tracking-tight">Browse All Channels</h1>
+            <p className="text-zinc-400 mt-2">Discover thousands of global IPTV streams</p>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-4 items-center">
+            <div className="flex items-center space-x-2 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2">
+              <Filter size={18} className="text-zinc-500" />
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="bg-transparent text-white focus:outline-none w-36 cursor-pointer"
+                tabIndex={0}
+              >
+                <option value="All">All Categories</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2">
+              <Filter size={18} className="text-zinc-500" />
+              <select
+                value={selectedCountry}
+                onChange={(e) => setSelectedCountry(e.target.value)}
+                className="bg-transparent text-white focus:outline-none w-36 cursor-pointer"
+                tabIndex={0}
+              >
+                <option value="All">All Regions</option>
+                {countries.map(c => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
 
-      <div ref={parentRef} className="flex-1 overflow-y-auto px-8 py-8 pb-32">
-        {loadingChannels ? (
-          <div className="flex h-64 items-center justify-center">
-            <Loader2 className="animate-spin text-red-600" size={48} />
+      {/* Grid of Channels */}
+      <div className="p-8">
+        {channels.length === 0 && !loadingChannels ? (
+          <div className="flex flex-col items-center justify-center py-32 text-zinc-500">
+            <SearchIcon size={64} className="mb-4 opacity-20" />
+            <p className="text-2xl font-semibold">No channels found</p>
+            <p className="text-zinc-600 mt-2">Try adjusting your category or region filters.</p>
           </div>
         ) : (
-          <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative',
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const startIdx = virtualRow.index * itemsPerRow;
-              const rowChannels = channels.slice(startIdx, startIdx + itemsPerRow);
-
-              return (
-                <div
-                  key={virtualRow.key}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: `${virtualRow.size}px`,
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                  className="flex space-x-6"
-                >
-                  {rowChannels.map((channel) => (
-                    <div key={channel.id} style={{ width: 'calc(20% - 20px)' }}>
-                      <ChannelCard channel={channel} />
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+            {channels.map((channel, i) => (
+              <ChannelCard key={`${channel.id}-${i}`} channel={channel} />
+            ))}
           </div>
         )}
+
+        {/* Infinite Scroll Loader Target */}
+        <div ref={observerTarget} className="w-full py-12 flex justify-center mt-4">
+          {loadingChannels && (
+            <div className="flex flex-col items-center text-zinc-500">
+              <Loader2 className="animate-spin text-red-600 mb-2" size={32} />
+              <span className="text-sm">Loading more channels...</span>
+            </div>
+          )}
+          {!hasMore && channels.length > 0 && (
+            <p className="text-zinc-600 text-sm">End of results</p>
+          )}
+        </div>
       </div>
     </div>
   );

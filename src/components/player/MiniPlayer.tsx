@@ -16,7 +16,7 @@ export default function MiniPlayer() {
   const isPlayerPage = pathname === '/player';
   const isMultiViewPage = pathname === '/multiview';
 
-  if (!currentChannel || isPlayerPage || isMultiViewPage || !currentChannel.sources.length) {
+  if (!currentChannel || isPlayerPage || isMultiViewPage || !currentChannel.streams?.length) {
     return null;
   }
 
@@ -29,7 +29,7 @@ export default function MiniPlayer() {
     router.push('/player');
   };
 
-  const streamSrc = currentChannel.sources[0]?.url;
+  const streamSrc = currentChannel.streams?.[0]?.url;
 
   return (
     <div 
