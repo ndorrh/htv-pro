@@ -12,16 +12,61 @@ export interface Channel {
   sources: StreamSource[];
 }
 
+export const DEFAULT_SOURCES = [
+  "https://iptv-org.github.io/iptv/categories/sports.m3u",
+  "https://iptv-org.github.io/iptv/categories/movies.m3u",
+  "https://iptv-org.github.io/iptv/categories/entertainment.m3u",
+  "https://iptv-org.github.io/iptv/categories/news.m3u",
+  "https://iptv-org.github.io/iptv/categories/kids.m3u",
+  "https://iptv-org.github.io/iptv/countries/ng.m3u",
+  "https://iptv-org.github.io/iptv/regions/afr.m3u",
+  "https://iptv-org.github.io/iptv/countries/us.m3u",
+  "https://iptv-org.github.io/iptv/countries/uk.m3u",
+];
+
+export async function fetchAllSources(urls: string[] = DEFAULT_SOURCES): Promise<Channel[]> {
+  const results = await Promise.allSettled(urls.map(url => fetchAndParseM3U(url)));
+  
+  const allChannelsMap = new Map<string, Channel>();
+
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      for (const channel of result.value) {
+        // Use the same normalization logic to group sources from different lists
+        const groupKey = channel.name || "Unknown";
+        
+        if (allChannelsMap.has(groupKey)) {
+          const existingChannel = allChannelsMap.get(groupKey)!;
+          // Merge sources
+          for (const source of channel.sources) {
+            if (!existingChannel.sources.some(s => s.url === source.url)) {
+              existingChannel.sources.push(source);
+            }
+          }
+          // Merge metadata
+          if (!existingChannel.logo && channel.logo) existingChannel.logo = channel.logo;
+          if (channel.group && existingChannel.group === "Uncategorized" && channel.group !== "Uncategorized") existingChannel.group = channel.group;
+          if (channel.country && existingChannel.country === "Global" && channel.country !== "Global") existingChannel.country = channel.country;
+        } else {
+          allChannelsMap.set(groupKey, channel);
+        }
+      }
+    }
+  }
+
+  return Array.from(allChannelsMap.values());
+}
+
 export async function fetchAndParseM3U(url: string): Promise<Channel[]> {
   try {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Failed to fetch M3U: ${response.statusText}`);
+      throw new Error(`Failed to fetch M3U from ${url}: ${response.statusText}`);
     }
     const text = await response.text();
     return parseM3UString(text);
   } catch (error) {
-    console.error("M3U Fetch Error:", error);
+    console.error(`M3U Fetch Error (${url}):`, error);
     return [];
   }
 }

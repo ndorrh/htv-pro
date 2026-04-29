@@ -2,33 +2,22 @@
 
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@/store/useStore';
-import { fetchAndParseM3U, Channel } from '@/lib/m3uParser';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
 import { ChannelCard } from '@/components/ui/ChannelRow';
 import { Loader2, Heart } from 'lucide-react';
 
-const DEFAULT_M3U = "https://iptv-org.github.io/iptv/index.m3u";
-
 export default function FavoritesPage() {
   useSpatialNavigation();
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { favorites } = useStore();
+  const { allChannels: channels, isLoadingChannels: loading, loadChannels, favorites } = useStore();
 
   useEffect(() => {
-    let isMounted = true;
-    const loadChannels = async () => {
-      setLoading(true);
-      const activeUrl = localStorage.getItem('htv-custom-m3u') || DEFAULT_M3U;
-      const data = await fetchAndParseM3U(activeUrl);
-      if (isMounted) {
-        setChannels(data);
-        setLoading(false);
-      }
-    };
-    loadChannels();
-    return () => { isMounted = false; };
-  }, []);
+    const activeUrl = localStorage.getItem('htv-custom-m3u');
+    if (activeUrl) {
+      loadChannels([activeUrl]);
+    } else {
+      loadChannels();
+    }
+  }, [loadChannels]);
 
   if (loading) {
     return (

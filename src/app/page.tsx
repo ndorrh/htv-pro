@@ -2,61 +2,43 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
-import { fetchAndParseM3U, Channel } from '@/lib/m3uParser';
+import { Channel } from '@/lib/m3uParser';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
 import HeroPlayer from '@/components/ui/HeroPlayer';
 import ChannelRow from '@/components/ui/ChannelRow';
 import { Search, Loader2 } from 'lucide-react';
 
-const DEFAULT_M3U = "https://iptv-org.github.io/iptv/index.m3u";
-
 export default function Home() {
   // Initialize spatial navigation for Smart TVs
   useSpatialNavigation();
 
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { allChannels: channels, isLoadingChannels: loading, loadChannels, history, favorites, currentChannel } = useStore();
   const [customUrl, setCustomUrl] = useState("");
-  const [activeUrl, setActiveUrl] = useState(DEFAULT_M3U);
 
   const [selectedCountry, setSelectedCountry] = useState("All");
   const [selectedCategory, setSelectedCategory] = useState("All");
 
-  const { history, favorites, currentChannel } = useStore();
   const [heroIndex, setHeroIndex] = useState(0);
 
   useEffect(() => {
     // Load saved custom URL if exists
     const savedUrl = localStorage.getItem('htv-custom-m3u');
     if (savedUrl) {
-      setActiveUrl(savedUrl);
       setCustomUrl(savedUrl);
+      loadChannels([savedUrl]);
+    } else {
+      loadChannels();
     }
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    const loadChannels = async () => {
-      setLoading(true);
-      const data = await fetchAndParseM3U(activeUrl);
-      if (isMounted) {
-        setChannels(data);
-        setLoading(false);
-      }
-    };
-    loadChannels();
-    return () => { isMounted = false; };
-  }, [activeUrl]);
+  }, [loadChannels]);
 
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (customUrl) {
       localStorage.setItem('htv-custom-m3u', customUrl);
-      setActiveUrl(customUrl);
     } else {
       localStorage.removeItem('htv-custom-m3u');
-      setActiveUrl(DEFAULT_M3U);
     }
+    window.location.reload();
   };
 
   // Extract unique filter options

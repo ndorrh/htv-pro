@@ -3,19 +3,16 @@
 import React, { useEffect, useState, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/store/useStore';
-import { Channel, fetchAndParseM3U } from '@/lib/m3uParser';
+import { Channel } from '@/lib/m3uParser';
 import HlsPlayer from '@/components/player/HlsPlayer';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
 import { Plus, X, AlertTriangle, Volume2 } from 'lucide-react';
-
-const DEFAULT_M3U = "https://iptv-org.github.io/iptv/index.m3u";
 
 function MultiViewContent() {
   useSpatialNavigation();
   const searchParams = useSearchParams();
   
-  const { multiViewChannels, setMultiViewChannel, focusedPlayerIndex, setFocusedPlayerIndex } = useStore();
-  const [channels, setChannels] = useState<Channel[]>([]);
+  const { multiViewChannels, setMultiViewChannel, focusedPlayerIndex, setFocusedPlayerIndex, allChannels: channels, loadChannels } = useStore();
   const [showWarning, setShowWarning] = useState(true);
   
   const processedAddId = useRef<string | null>(null);
@@ -25,9 +22,13 @@ function MultiViewContent() {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    const activeUrl = localStorage.getItem('htv-custom-m3u') || DEFAULT_M3U;
-    fetchAndParseM3U(activeUrl).then(setChannels);
-  }, []);
+    const activeUrl = localStorage.getItem('htv-custom-m3u');
+    if (activeUrl) {
+      loadChannels([activeUrl]);
+    } else {
+      loadChannels();
+    }
+  }, [loadChannels]);
 
   useEffect(() => {
     const addId = searchParams.get('add');

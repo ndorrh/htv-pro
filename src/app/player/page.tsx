@@ -3,12 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/store/useStore';
-import { Channel, fetchAndParseM3U } from '@/lib/m3uParser';
+import { Channel } from '@/lib/m3uParser';
 import HlsPlayer from '@/components/player/HlsPlayer';
 import { ArrowLeft, Heart, X } from 'lucide-react';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
-
-const DEFAULT_M3U = "https://iptv-org.github.io/iptv/index.m3u";
 
 export default function PlayerPage() {
   useSpatialNavigation();
@@ -18,8 +16,9 @@ export default function PlayerPage() {
 
   // Selection Modal State
   const [isSelectingChannel, setIsSelectingChannel] = useState(false);
-  const [channels, setChannels] = useState<Channel[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const { allChannels: channels, loadChannels } = useStore();
 
   useEffect(() => {
     if (!currentChannel) {
@@ -29,10 +28,14 @@ export default function PlayerPage() {
 
   useEffect(() => {
     if (isSelectingChannel && channels.length === 0) {
-      const activeUrl = localStorage.getItem('htv-custom-m3u') || DEFAULT_M3U;
-      fetchAndParseM3U(activeUrl).then(setChannels);
+      const activeUrl = localStorage.getItem('htv-custom-m3u');
+      if (activeUrl) {
+        loadChannels([activeUrl]);
+      } else {
+        loadChannels();
+      }
     }
-  }, [isSelectingChannel, channels.length]);
+  }, [isSelectingChannel, channels.length, loadChannels]);
 
   if (!currentChannel) return null;
 
