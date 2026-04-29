@@ -33,36 +33,15 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
   const [subtitleTracks, setSubtitleTracks] = useState<any[]>([]);
   const [currentSubtitle, setCurrentSubtitle] = useState<number>(-1);
 
-  // Auto-hide controls — only when playing. Any mouse/key activity resets the timer.
-  const controlsTimer = useRef<NodeJS.Timeout | null>(null);
+  // Network / buffer stats
+  const [bandwidth, setBandwidth] = useState<number>(0);   // bits per second
+  const [bufferAhead, setBufferAhead] = useState<number>(0); // seconds buffered ahead
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
 
-  const revealControls = () => {
-    setShowControls(true);
-    if (controlsTimer.current) clearTimeout(controlsTimer.current);
-    // Only auto-hide while playing and settings panel is closed
-    if (!showSettings) {
-      controlsTimer.current = setTimeout(() => setShowControls(false), 4000);
-    }
-  };
-
-  // Show controls when playback state changes:
-  // - Paused → always visible, cancel any pending hide timer
-  // - Started playing → briefly show, then auto-hide after 4s
-  useEffect(() => {
-    if (!isPlaying) {
-      // Paused: keep controls visible indefinitely
-      setShowControls(true);
-      if (controlsTimer.current) clearTimeout(controlsTimer.current);
-    } else {
-      // Playback started: show controls and begin the hide countdown
-      setShowControls(true);
-      if (controlsTimer.current) clearTimeout(controlsTimer.current);
-      if (!showSettings) {
-        controlsTimer.current = setTimeout(() => setShowControls(false), 4000);
-      }
-    }
-    return () => { if (controlsTimer.current) clearTimeout(controlsTimer.current); };
-  }, [isPlaying, showSettings]);
+  // Controls are always visible in full-screen mode.
+  // In mini mode they are always shown too (they're minimal).
+  // No auto-hide — this is a TV app, hover is unreliable.
 
   // Sync muted prop with state and video element
   useEffect(() => {
@@ -99,6 +78,26 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
         }
       });
 
+      // ── Speed meter: poll HLS.js bandwidth estimate after each fragment ──
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        setBandwidth(hls.bandwidthEstimate || 0); // bits per second, maintained by ABR controller
+      });
+
+      // ── Buffer health: update when the video timeline advances ─────────
+      const updateBuffer = () => {
+        if (!videoRef.current) return;
+        const v = videoRef.current;
+        setCurrentTime(v.currentTime);
+        setDuration(v.duration);
+        if (v.buffered.length > 0) {
+          const ahead = v.buffered.end(v.buffered.length - 1) - v.currentTime;
+          setBufferAhead(Math.max(0, ahead));
+        }
+      };
+      video.addEventListener('timeupdate', updateBuffer);
+      video.addEventListener('progress',   updateBuffer);
+      video.addEventListener('waiting',    () => setBufferAhead(0));
+
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
         setAudioTracks(data.audioTracks);
       });
@@ -132,6 +131,8 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
 
       return () => {
         hls.destroy();
+        video.removeEventListener('timeupdate', updateBuffer);
+        video.removeEventListener('progress',   updateBuffer);
       };
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS support (Safari)
@@ -146,6 +147,17 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
       });
     }
   }, [src, autoPlay, onStreamError]);
+
+  const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds)) return '00:00';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const togglePlay = () => {
     if (videoRef.current) {
@@ -215,11 +227,7 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
   return (
     <div 
       ref={containerRef} 
-      className={`relative group bg-black overflow-hidden flex items-center justify-center ${className}`}
-      onMouseMove={revealControls}
-      onKeyDown={revealControls}
-      onClick={() => { revealControls(); }}
-      tabIndex={-1}
+      className={`relative bg-black overflow-hidden flex items-center justify-center ${className}`}
     >
       <video
         ref={videoRef}
@@ -241,14 +249,34 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
         </div>
       )}
 
-      {/* Controls Overlay — always visible when paused, auto-hides while playing */}
+      {/* Controls Overlay — always visible in full-screen; minimal in mini */}
       <div 
-        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent transition-opacity duration-300 ${
-          (!isMini && showControls) || isMini ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        } flex flex-col justify-end z-10`}
+        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex flex-col justify-end z-10 transition-opacity duration-200 ${
+          isMini ? 'opacity-0 hover:opacity-100' : 'opacity-100'
+        }`}
       >
+        {/* ── Buffer progress bar (live buffer fill, 0–10s range) ──────── */}
+        <div className="w-full mb-3 flex items-center space-x-3">
+          <div className="flex-1">
+            <div className="relative w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+              {/* Buffered range */}
+              <div
+                className="absolute left-0 top-0 h-full bg-red-500/60 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, (bufferAhead / 10) * 100)}%` }}
+              />
+              {/* Playhead dot */}
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md shadow-red-500/50 -ml-1.25" />
+            </div>
+          </div>
+          {!isMini && (
+            <div className="text-[10px] font-mono text-zinc-400 whitespace-nowrap">
+              {formatTime(currentTime)}
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             <button 
               tabIndex={0} 
               onClick={togglePlay} 
@@ -266,10 +294,31 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
               </button>
             )}
             
+            {/* LIVE badge */}
             <div className="flex items-center space-x-2 bg-red-600/20 px-2 py-1 rounded border border-red-600/50">
               <div className="w-2 h-2 rounded-full bg-red-600 animate-pulse"></div>
               <span className="text-red-500 text-xs font-bold tracking-widest uppercase">Live</span>
             </div>
+
+            {/* Speed + buffer info */}
+            {bandwidth > 0 && (
+              <div className={`flex items-center space-x-2 text-xs font-mono ${isMini ? 'scale-75 origin-left' : ''}`}>
+                <span className={`px-2 py-0.5 rounded font-semibold ${
+                  bandwidth >= 2_000_000 ? 'text-green-400 bg-green-400/10' :
+                  bandwidth >= 500_000   ? 'text-yellow-400 bg-yellow-400/10' :
+                                           'text-red-400 bg-red-400/10'
+                }`}>
+                  ↓ {bandwidth >= 1_000_000
+                    ? `${(bandwidth / 1_000_000).toFixed(1)} Mbps`
+                    : `${Math.round(bandwidth / 1_000)} kbps`}
+                </span>
+                {!isMini && bufferAhead > 0 && (
+                  <span className="text-zinc-400 bg-white/5 px-2 py-0.5 rounded">
+                    {bufferAhead.toFixed(1)}s buffered
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center space-x-4">

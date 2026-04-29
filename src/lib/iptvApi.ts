@@ -183,50 +183,76 @@ async function fetchJson<T>(endpoint: string, retries = 5, baseDelay = 1000): Pr
   return [];
 }
 
-export async function refreshCache() {
+// Singleton: if a refresh is already underway, all callers await the same promise.
+// This prevents the race condition where 3 API routes start fetching simultaneously.
+let _refreshInFlight: Promise<void> | null = null;
+
+export async function refreshCache(): Promise<void> {
   const now = Date.now();
+
+  // Cache still fresh — skip entirely
   if (now - cache.lastFetched < CACHE_TTL && cache.channels.length > 0) {
-    return; // Use existing cache
+    console.log(`[Cache] Using cached data (fresh for another ${Math.round((CACHE_TTL - (now - cache.lastFetched)) / 60000)}m)`);
+    return;
   }
 
-  console.log("Fetching fresh data from iptv-org API...");
+  // Another caller already started a fetch — wait for it to finish instead of starting a new one
+  if (_refreshInFlight) {
+    return _refreshInFlight;
+  }
 
-  const [
-    channels, streams, categories, countries, languages,
-    regions, cities, subdivisions, timezones, logos,
-    blocklist, guides, feeds
-  ] = await Promise.all([
-    fetchJson<ApiChannel>('channels.json'),
-    fetchJson<ApiStream>('streams.json'),
-    fetchJson<ApiCategory>('categories.json'),
-    fetchJson<ApiCountry>('countries.json'),
-    fetchJson<ApiLanguage>('languages.json'),
-    fetchJson<ApiRegion>('regions.json'),
-    fetchJson<ApiCity>('cities.json'),
-    fetchJson<ApiSubdivision>('subdivisions.json'),
-    fetchJson<ApiTimezone>('timezones.json'),
-    fetchJson<ApiLogo>('logos.json'),
-    fetchJson<ApiBlocklist>('blocklist.json'),
-    fetchJson<ApiGuide>('guides.json'),
-    fetchJson<ApiFeed>('feeds.json'),
-  ]);
+  // We are the first caller — start the fetch and store the promise
+  _refreshInFlight = (async () => {
+    // Double-check after acquiring "lock" (another await may have completed between the checks above)
+    const now2 = Date.now();
+    if (now2 - cache.lastFetched < CACHE_TTL && cache.channels.length > 0) {
+      return;
+    }
 
-  cache.channels = channels;
-  cache.streams = streams;
-  cache.categories = categories;
-  cache.countries = countries;
-  cache.languages = languages;
-  cache.regions = regions;
-  cache.cities = cities;
-  cache.subdivisions = subdivisions;
-  cache.timezones = timezones;
-  cache.logos = logos;
-  cache.blocklist = blocklist;
-  cache.guides = guides;
-  cache.feeds = feeds;
-  cache.lastFetched = now;
+    console.log('[Cache] Fetching fresh data from iptv-org API...');
 
-  console.log(`Cache refreshed. Loaded ${channels.length} channels and ${streams.length} streams.`);
+    const [
+      channels, streams, categories, countries, languages,
+      regions, cities, subdivisions, timezones, logos,
+      blocklist, guides, feeds
+    ] = await Promise.all([
+      fetchJson<ApiChannel>('channels.json'),
+      fetchJson<ApiStream>('streams.json'),
+      fetchJson<ApiCategory>('categories.json'),
+      fetchJson<ApiCountry>('countries.json'),
+      fetchJson<ApiLanguage>('languages.json'),
+      fetchJson<ApiRegion>('regions.json'),
+      fetchJson<ApiCity>('cities.json'),
+      fetchJson<ApiSubdivision>('subdivisions.json'),
+      fetchJson<ApiTimezone>('timezones.json'),
+      fetchJson<ApiLogo>('logos.json'),
+      fetchJson<ApiBlocklist>('blocklist.json'),
+      fetchJson<ApiGuide>('guides.json'),
+      fetchJson<ApiFeed>('feeds.json'),
+    ]);
+
+    cache.channels     = channels;
+    cache.streams      = streams;
+    cache.categories   = categories;
+    cache.countries    = countries;
+    cache.languages    = languages;
+    cache.regions      = regions;
+    cache.cities       = cities;
+    cache.subdivisions = subdivisions;
+    cache.timezones    = timezones;
+    cache.logos        = logos;
+    cache.blocklist    = blocklist;
+    cache.guides       = guides;
+    cache.feeds        = feeds;
+    cache.lastFetched  = Date.now();
+
+    console.log(`[Cache] Ready — ${channels.length} channels, ${streams.length} streams.`);
+  })().finally(() => {
+    // Always clear the in-flight reference so future refreshes can run after TTL expires
+    _refreshInFlight = null;
+  });
+
+  return _refreshInFlight;
 }
 
 export async function getCategories() {
