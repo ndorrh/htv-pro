@@ -112,7 +112,7 @@ export default function AllChannelsPage() {
   }
 
   return (
-    <>
+    <div className="min-h-full bg-zinc-950">
       {/* ── Sticky filter header (sits inside <main> which handles scroll) ─── */}
       <div className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-b border-zinc-800/70 pt-8 pb-5 space-y-5">
         {/* Title row */}
@@ -206,6 +206,6 @@ export default function AllChannelsPage() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }

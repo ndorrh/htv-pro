@@ -45,11 +45,21 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
     }
   };
 
-  // Always show controls when paused; auto-hide only while playing
+  // Show controls when playback state changes:
+  // - Paused → always visible, cancel any pending hide timer
+  // - Started playing → briefly show, then auto-hide after 4s
   useEffect(() => {
     if (!isPlaying) {
+      // Paused: keep controls visible indefinitely
       setShowControls(true);
       if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    } else {
+      // Playback started: show controls and begin the hide countdown
+      setShowControls(true);
+      if (controlsTimer.current) clearTimeout(controlsTimer.current);
+      if (!showSettings) {
+        controlsTimer.current = setTimeout(() => setShowControls(false), 4000);
+      }
     }
     return () => { if (controlsTimer.current) clearTimeout(controlsTimer.current); };
   }, [isPlaying, showSettings]);

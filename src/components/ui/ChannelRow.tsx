@@ -4,7 +4,7 @@ import React, { useRef } from 'react';
 import { ChannelData as Channel } from '@/lib/iptvApi';
 import { useStore } from '@/store/useStore';
 import { useRouter } from 'next/navigation';
-import { Play, Grid, PictureInPicture2 } from 'lucide-react';
+import { Play, Grid, PictureInPicture2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ChannelCardProps {
   channel: Channel;
@@ -98,13 +98,27 @@ export default function ChannelRow({ title, channels }: ChannelRowProps) {
 
   if (!channels.length) return null;
 
+  const scroll = (dir: 'left' | 'right') => {
+    if (!rowRef.current) return;
+    rowRef.current.scrollBy({ left: dir === 'left' ? -700 : 700, behavior: 'smooth' });
+  };
+
   return (
     <div className="w-full mb-8">
       <h2 className="text-2xl font-bold text-white mb-4 px-12">{title}</h2>
-      <div className="relative group">
+      <div className="relative group/row">
+        {/* Left scroll button */}
+        <button
+          onClick={() => scroll('left')}
+          className="absolute left-2 top-1/2 -translate-y-1/2 z-20 bg-zinc-900/90 hover:bg-red-600 border border-zinc-700 text-white rounded-full p-2.5 opacity-0 group-hover/row:opacity-100 transition-all duration-200 shadow-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+          aria-label="Scroll left"
+        >
+          <ChevronLeft size={22} />
+        </button>
+
         <div 
           ref={rowRef}
-          className="flex space-x-4 overflow-x-auto px-12 pb-8 pt-4 scrollbar-hide scroll-smooth snap-x"
+          className="flex space-x-4 overflow-x-auto px-12 pb-8 pt-4 scroll-smooth snap-x"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {channels.map((channel, i) => (
@@ -113,6 +127,15 @@ export default function ChannelRow({ title, channels }: ChannelRowProps) {
             </div>
           ))}
         </div>
+
+        {/* Right scroll button */}
+        <button
+          onClick={() => scroll('right')}
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-20 bg-zinc-900/90 hover:bg-red-600 border border-zinc-700 text-white rounded-full p-2.5 opacity-0 group-hover/row:opacity-100 transition-all duration-200 shadow-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+          aria-label="Scroll right"
+        >
+          <ChevronRight size={22} />
+        </button>
       </div>
     </div>
   );

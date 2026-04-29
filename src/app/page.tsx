@@ -101,7 +101,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto bg-zinc-950 pb-20 scrollbar-hide">
+    <div className="min-h-full flex flex-col bg-zinc-950 pb-20 scrollbar-hide">
       
       {/* Search / Filter Bar */}
       <div className="sticky top-0 z-30 bg-gradient-to-b from-zinc-950/90 to-transparent pt-6 pb-8 px-12 flex items-center justify-between pointer-events-none">
