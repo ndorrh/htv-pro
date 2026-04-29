@@ -33,14 +33,26 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
   const [subtitleTracks, setSubtitleTracks] = useState<any[]>([]);
   const [currentSubtitle, setCurrentSubtitle] = useState<number>(-1);
 
-  // Auto-hide controls
-  useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    if (isPlaying && showControls && !showSettings) {
-      timeout = setTimeout(() => setShowControls(false), 3000);
+  // Auto-hide controls — only when playing. Any mouse/key activity resets the timer.
+  const controlsTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const revealControls = () => {
+    setShowControls(true);
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    // Only auto-hide while playing and settings panel is closed
+    if (!showSettings) {
+      controlsTimer.current = setTimeout(() => setShowControls(false), 4000);
     }
-    return () => clearTimeout(timeout);
-  }, [isPlaying, showControls, showSettings]);
+  };
+
+  // Always show controls when paused; auto-hide only while playing
+  useEffect(() => {
+    if (!isPlaying) {
+      setShowControls(true);
+      if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    }
+    return () => { if (controlsTimer.current) clearTimeout(controlsTimer.current); };
+  }, [isPlaying, showSettings]);
 
   // Sync muted prop with state and video element
   useEffect(() => {
@@ -194,8 +206,10 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
     <div 
       ref={containerRef} 
       className={`relative group bg-black overflow-hidden flex items-center justify-center ${className}`}
-      onMouseMove={() => setShowControls(true)}
-      onClick={() => setShowControls(!showControls)}
+      onMouseMove={revealControls}
+      onKeyDown={revealControls}
+      onClick={() => { revealControls(); }}
+      tabIndex={-1}
     >
       <video
         ref={videoRef}
@@ -217,9 +231,11 @@ export default function HlsPlayer({ src, autoPlay = true, muted = false, onStrea
         </div>
       )}
 
-      {/* Controls Overlay */}
+      {/* Controls Overlay — always visible when paused, auto-hides while playing */}
       <div 
-        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-300 ${showControls || isMini ? 'opacity-100' : 'opacity-0'} flex flex-col justify-end z-10`}
+        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent transition-opacity duration-300 ${
+          (!isMini && showControls) || isMini ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        } flex flex-col justify-end z-10`}
       >
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center space-x-4">
