@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import React, { useEffect, useState, Suspense, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/store/useStore';
 import { Channel, fetchAndParseM3U } from '@/lib/m3uParser';
 import HlsPlayer from '@/components/player/HlsPlayer';
@@ -13,12 +13,13 @@ const DEFAULT_M3U = "https://iptv-org.github.io/iptv/index.m3u";
 function MultiViewContent() {
   useSpatialNavigation();
   const searchParams = useSearchParams();
-  const router = useRouter();
   
   const { multiViewChannels, setMultiViewChannel, focusedPlayerIndex, setFocusedPlayerIndex } = useStore();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [showWarning, setShowWarning] = useState(true);
   
+  const processedAddId = useRef<string | null>(null);
+
   // Selection UI state
   const [selectingForSlot, setSelectingForSlot] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -30,7 +31,13 @@ function MultiViewContent() {
 
   useEffect(() => {
     const addId = searchParams.get('add');
-    if (addId && channels.length > 0) {
+    if (!addId) {
+      processedAddId.current = null;
+      return;
+    }
+
+    if (addId && channels.length > 0 && processedAddId.current !== addId) {
+      processedAddId.current = addId;
       const channel = channels.find(c => c.id === addId);
       if (channel) {
         // Find first empty slot
@@ -40,10 +47,10 @@ function MultiViewContent() {
           setFocusedPlayerIndex(emptyIndex);
         }
       }
-      // Clear URL params
-      router.replace('/multiview');
+      // Clear URL params without triggering a Next.js navigation
+      window.history.replaceState(null, '', '/multiview');
     }
-  }, [searchParams, channels, multiViewChannels, setMultiViewChannel, setFocusedPlayerIndex, router]);
+  }, [searchParams, channels, multiViewChannels, setMultiViewChannel, setFocusedPlayerIndex]);
 
   const handleSelectChannel = (channel: Channel) => {
     if (selectingForSlot !== null) {
