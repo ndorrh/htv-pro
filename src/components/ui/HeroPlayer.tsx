@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useStore } from '@/store/useStore';
 import HlsPlayer from '../player/HlsPlayer';
 import { Volume2, VolumeX, Play } from 'lucide-react';
-import { Channel } from '@/lib/m3uParser';
+import { ChannelData as Channel } from '@/lib/iptvApi';
 
 interface HeroPlayerProps {
   channel: Channel;
@@ -22,7 +22,7 @@ export default function HeroPlayer({ channel, onStreamError }: HeroPlayerProps) 
     router.push('/player');
   };
 
-  const streamSrc = channel.sources[0]?.url;
+  const streamSrc = channel.streams[0]?.url;
 
   if (!streamSrc) return null;
 
@@ -50,7 +50,7 @@ export default function HeroPlayer({ channel, onStreamError }: HeroPlayerProps) 
           {channel.name}
         </h1>
         <p className="text-lg text-zinc-300 mb-8 font-medium">
-          Category: {channel.group}
+          Category: {channel.categories?.[0]}
         </p>
 
         <div className="flex items-center space-x-4">

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { Channel } from '@/lib/m3uParser';
+import { ChannelData as Channel } from '@/lib/iptvApi';
 import { useStore } from '@/store/useStore';
 import { useRouter } from 'next/navigation';
 import { Play, Grid } from 'lucide-react';

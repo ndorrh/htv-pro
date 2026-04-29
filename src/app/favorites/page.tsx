@@ -5,19 +5,35 @@ import { useStore } from '@/store/useStore';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
 import { ChannelCard } from '@/components/ui/ChannelRow';
 import { Loader2, Heart } from 'lucide-react';
+import { ChannelData as Channel } from '@/lib/iptvApi';
 
 export default function FavoritesPage() {
   useSpatialNavigation();
-  const { allChannels: channels, isLoadingChannels: loading, loadChannels, favorites } = useStore();
+  const { favorites } = useStore();
+  const [favoriteChannels, setFavoriteChannels] = useState<Channel[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const activeUrl = localStorage.getItem('htv-custom-m3u');
-    if (activeUrl) {
-      loadChannels([activeUrl]);
-    } else {
-      loadChannels();
+    async function fetchFavorites() {
+      if (favorites.length === 0) {
+        setFavoriteChannels([]);
+        return;
+      }
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/channels?ids=${favorites.join(',')}&limit=${favorites.length}`);
+        if (res.ok) {
+          const data = await res.json();
+          setFavoriteChannels(data.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch favorite channels", err);
+      } finally {
+        setLoading(false);
+      }
     }
-  }, [loadChannels]);
+    fetchFavorites();
+  }, [favorites]);
 
   if (loading) {
     return (
@@ -26,8 +42,6 @@ export default function FavoritesPage() {
       </div>
     );
   }
-
-  const favoriteChannels = channels.filter(c => favorites.includes(c.id));
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col pt-12 px-12 pb-20">

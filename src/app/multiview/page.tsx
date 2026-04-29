@@ -3,16 +3,16 @@
 import React, { useEffect, useState, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/store/useStore';
-import { Channel } from '@/lib/m3uParser';
+import { ChannelData as Channel } from '@/lib/iptvApi';
 import HlsPlayer from '@/components/player/HlsPlayer';
 import { useSpatialNavigation } from '@/lib/spatialFocus';
-import { Plus, X, AlertTriangle, Volume2 } from 'lucide-react';
+import { Plus, X, AlertTriangle, Volume2, Search as SearchIcon, Loader2 } from 'lucide-react';
 
 function MultiViewContent() {
   useSpatialNavigation();
   const searchParams = useSearchParams();
   
-  const { multiViewChannels, setMultiViewChannel, focusedPlayerIndex, setFocusedPlayerIndex, allChannels: channels, loadChannels } = useStore();
+  const { multiViewChannels, setMultiViewChannel, focusedPlayerIndex, setFocusedPlayerIndex } = useStore();
   const [showWarning, setShowWarning] = useState(true);
   
   const processedAddId = useRef<string | null>(null);
@@ -20,16 +20,10 @@ function MultiViewContent() {
   // Selection UI state
   const [selectingForSlot, setSelectingForSlot] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Channel[]>([]);
+  const [searching, setSearching] = useState(false);
 
-  useEffect(() => {
-    const activeUrl = localStorage.getItem('htv-custom-m3u');
-    if (activeUrl) {
-      loadChannels([activeUrl]);
-    } else {
-      loadChannels();
-    }
-  }, [loadChannels]);
-
+  // Handle ?add=id in URL
   useEffect(() => {
     const addId = searchParams.get('add');
     if (!addId) {
@@ -37,21 +31,50 @@ function MultiViewContent() {
       return;
     }
 
-    if (addId && channels.length > 0 && processedAddId.current !== addId) {
+    if (addId && processedAddId.current !== addId) {
       processedAddId.current = addId;
-      const channel = channels.find(c => c.id === addId);
-      if (channel) {
-        // Find first empty slot
-        const emptyIndex = multiViewChannels.findIndex(c => c === null);
-        if (emptyIndex !== -1) {
-          setMultiViewChannel(emptyIndex, channel);
-          setFocusedPlayerIndex(emptyIndex);
-        }
-      }
-      // Clear URL params without triggering a Next.js navigation
-      window.history.replaceState(null, '', '/multiview');
+      
+      // Fetch channel by ID
+      fetch(`/api/channels/${addId}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(channel => {
+          if (channel && channel.id) {
+            const emptyIndex = multiViewChannels.findIndex(c => c === null);
+            if (emptyIndex !== -1) {
+              setMultiViewChannel(emptyIndex, channel);
+              setFocusedPlayerIndex(emptyIndex);
+            }
+          }
+          window.history.replaceState(null, '', '/multiview');
+        })
+        .catch(err => console.error("Failed to add channel", err));
     }
-  }, [searchParams, channels, multiViewChannels, setMultiViewChannel, setFocusedPlayerIndex]);
+  }, [searchParams, multiViewChannels, setMultiViewChannel, setFocusedPlayerIndex]);
+
+  // Search when typing in modal
+  useEffect(() => {
+    if (selectingForSlot === null) return;
+    
+    if (!searchQuery.trim()) {
+      // Load some defaults
+      setSearching(true);
+      fetch('/api/channels?limit=20')
+        .then(res => res.json())
+        .then(data => setSearchResults(data.data || []))
+        .finally(() => setSearching(false));
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setSearching(true);
+      fetch(`/api/channels?search=${encodeURIComponent(searchQuery)}&limit=50`)
+        .then(res => res.json())
+        .then(data => setSearchResults(data.data || []))
+        .finally(() => setSearching(false));
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery, selectingForSlot]);
 
   const handleSelectChannel = (channel: Channel) => {
     if (selectingForSlot !== null) {
@@ -73,140 +96,153 @@ function MultiViewContent() {
     }
   };
 
-  const filteredChannels = channels.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 50);
-  
   const activeSlots = multiViewChannels.map((c, i) => ({ channel: c, index: i })).filter(s => s.channel !== null);
   const activeCount = activeSlots.length;
 
-  // Determine grid layout based on active channels
-  let gridCols = "grid-cols-1";
-  if (activeCount > 1) gridCols = "grid-cols-2";
-  
-  return (
-    <div className="min-h-screen bg-zinc-950 p-6 flex flex-col relative pb-24">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-white">Multi-View Grid</h1>
-        
-        {showWarning && (
-          <div className="flex items-center bg-amber-900/40 border border-amber-600 text-amber-200 px-4 py-2 rounded-lg ml-4 flex-1 max-w-3xl">
-            <AlertTriangle className="mr-2 shrink-0" size={20} />
-            <p className="text-sm">
-              <strong>Hardware Warning:</strong> Playing multiple streams simultaneously may cause low-end Smart TVs to crash. Use at your own risk. Defaulting to adaptive bitrate.
-            </p>
-            <button tabIndex={0} onClick={() => setShowWarning(false)} className="ml-4 p-1 hover:bg-amber-800 rounded focus:ring-2 focus:ring-amber-500">
-              <X size={16} />
-            </button>
-          </div>
-        )}
-      </div>
+  let gridCols = 'grid-cols-1';
+  let gridRows = 'grid-rows-1';
+  if (activeCount === 2) {
+    gridCols = 'grid-cols-2';
+    gridRows = 'grid-rows-1';
+  } else if (activeCount > 2) {
+    gridCols = 'grid-cols-2';
+    gridRows = 'grid-rows-2';
+  }
 
-      {activeCount === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 border-2 border-dashed border-zinc-800 rounded-2xl p-12">
-          <div className="bg-zinc-900 p-6 rounded-full mb-6">
-            <Plus size={48} className="text-zinc-600" />
+  return (
+    <div className="h-screen bg-black flex flex-col relative">
+      {/* Disclaimer Warning */}
+      {showWarning && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-yellow-900/90 border border-yellow-700 text-yellow-100 px-6 py-3 rounded-lg shadow-2xl flex items-center space-x-4 max-w-2xl">
+          <AlertTriangle className="text-yellow-400 shrink-0" />
+          <div className="text-sm">
+            <p className="font-bold">Hardware Performance Warning</p>
+            <p>Playing multiple video streams simultaneously requires significant network bandwidth and hardware decoding capabilities. You may experience buffering or degraded quality.</p>
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Build Your Grid</h2>
-          <p className="mb-8">Add up to 4 streams to watch simultaneously.</p>
-          <button 
-            tabIndex={0}
-            onClick={handleAddScreen}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg focus:ring-4 focus:ring-red-400 focus:outline-none transition-all scale-105 hover:scale-110"
-          >
-            Add First Screen
+          <button onClick={() => setShowWarning(false)} className="text-yellow-400 hover:text-white p-1">
+            <X size={20} />
           </button>
         </div>
-      ) : (
-        <div className={`flex-1 grid ${gridCols} gap-4 h-full`}>
-          {activeSlots.map(({ channel, index }) => {
-            const isFocused = focusedPlayerIndex === index;
+      )}
 
-            return (
-              <div 
-                key={`slot-${index}`}
-                tabIndex={0}
-                onClick={() => setFocusedPlayerIndex(index)}
-                onKeyDown={(e) => e.key === 'Enter' && setFocusedPlayerIndex(index)}
-                className={`relative rounded-xl overflow-hidden bg-black focus:outline-none transition-all ${isFocused ? 'ring-4 ring-red-600 shadow-2xl shadow-red-900/50 scale-[1.01] z-10' : 'ring-1 ring-zinc-800 opacity-80 hover:opacity-100 cursor-pointer'} ${activeCount === 1 ? 'aspect-video w-full max-w-5xl mx-auto' : 'h-full min-h-[300px]'}`}
-              >
-                <HlsPlayer 
-                  src={channel!.sources[0]?.url} 
-                  autoPlay={true}
-                  muted={!isFocused} 
-                  isMini={false}
-                  onChangeChannel={() => setSelectingForSlot(index)}
-                  className="w-full h-full absolute inset-0"
-                />
-                
-                <div className="absolute top-4 left-4 bg-black/80 px-3 py-1 rounded border border-zinc-800 flex items-center z-20 pointer-events-none">
-                  <span className="text-white font-medium text-sm">{channel!.name}</span>
-                  {isFocused && <Volume2 size={16} className="text-red-500 ml-2" />}
+      {/* Main Grid */}
+      <div className={`flex-1 grid ${gridCols} ${gridRows} gap-1 p-1 bg-zinc-950`}>
+        {multiViewChannels.map((channel, i) => {
+          if (!channel) return null;
+          
+          const isFocused = focusedPlayerIndex === i;
+          
+          return (
+            <div 
+              key={`slot-${i}`} 
+              className={`relative bg-zinc-900 rounded-sm overflow-hidden border-2 transition-colors ${isFocused ? 'border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.5)] z-10' : 'border-transparent'}`}
+              onClick={() => setFocusedPlayerIndex(i)}
+            >
+              <HlsPlayer 
+                src={channel.streams[0]?.url || ''} 
+                autoPlay={true}
+                muted={!isFocused} 
+                className="w-full h-full object-contain bg-black"
+              />
+              
+              {/* Overlay UI */}
+              <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-start opacity-0 hover:opacity-100 transition-opacity">
+                <div className="flex items-center space-x-2">
+                  <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">LIVE</span>
+                  <span className="text-white font-semibold drop-shadow-md">{channel.name}</span>
                 </div>
-
-                <button
-                  tabIndex={0}
+                <button 
                   onClick={(e) => {
                     e.stopPropagation();
-                    removeChannel(index);
+                    removeChannel(i);
                   }}
-                  className="absolute top-4 right-4 bg-black/80 p-2 rounded-full border border-zinc-800 text-zinc-400 hover:text-white hover:bg-red-600 focus:ring-2 focus:ring-white transition-colors z-20"
+                  className="bg-black/50 text-white hover:bg-red-600 p-1.5 rounded transition-colors"
                   title="Remove Screen"
                 >
                   <X size={16} />
                 </button>
               </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Floating Add Screen Button */}
-      {activeCount > 0 && activeCount < 4 && (
-        <button
-          tabIndex={0}
-          onClick={handleAddScreen}
-          className="fixed bottom-8 right-8 bg-red-600 hover:bg-red-700 text-white p-4 rounded-full shadow-2xl focus:ring-4 focus:ring-red-400 focus:outline-none transition-all hover:scale-110 z-30 flex items-center space-x-2"
-        >
-          <Plus size={24} />
-          <span className="font-bold pr-2">Add Screen</span>
-        </button>
-      )}
+              {/* Audio Indicator */}
+              {isFocused && (
+                <div className="absolute bottom-4 right-4 bg-red-600/90 text-white px-2 py-1 rounded flex items-center space-x-1 shadow-lg backdrop-blur-sm">
+                  <Volume2 size={14} />
+                  <span className="text-xs font-bold">Audio Active</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
 
-      {/* Selection Modal */}
+        {/* Add Screen Button (if less than 4) */}
+        {activeCount < 4 && !selectingForSlot && (
+          <div 
+            onClick={handleAddScreen}
+            className="border-2 border-dashed border-zinc-800 hover:border-zinc-600 bg-zinc-900/30 rounded flex flex-col items-center justify-center cursor-pointer transition-colors group text-zinc-500 hover:text-zinc-300"
+          >
+            <Plus size={48} className="mb-2 group-hover:scale-110 transition-transform" />
+            <span className="font-semibold">Add Channel to View</span>
+            <span className="text-xs text-zinc-600 mt-1">{4 - activeCount} slots remaining</span>
+          </div>
+        )}
+      </div>
+
+      {/* Channel Selection Modal */}
       {selectingForSlot !== null && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 md:p-12">
-          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-4xl h-[80vh] rounded-2xl flex flex-col shadow-2xl">
-            <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-white">Select Channel</h2>
-              <button onClick={() => setSelectingForSlot(null)} className="p-2 bg-zinc-900 rounded hover:bg-zinc-800 text-white">
+        <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-8">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-4xl max-h-full rounded-xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
+              <h2 className="text-2xl font-bold text-white">Select Channel for Screen {selectingForSlot + 1}</h2>
+              <button 
+                onClick={() => setSelectingForSlot(null)}
+                className="text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 p-2 rounded-full transition-colors"
+              >
                 <X size={24} />
               </button>
             </div>
-            <div className="p-6 flex-1 flex flex-col overflow-hidden">
-              <input 
-                type="text" 
-                autoFocus
-                placeholder="Search channels..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-700 text-white p-4 rounded-lg focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 mb-6"
-              />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 overflow-y-auto pr-2 pb-10">
-                {filteredChannels.map(channel => (
-                  <button
-                    key={channel.id}
-                    tabIndex={0}
-                    onClick={() => handleSelectChannel(channel)}
-                    className="flex flex-col items-center p-4 bg-zinc-900 rounded-lg hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-red-500 text-left border border-transparent hover:border-zinc-700 transition-colors"
-                  >
-                    {channel.logo ? (
-                      <img src={channel.logo} alt={channel.name} className="h-12 w-auto mb-3 object-contain" />
-                    ) : (
-                      <div className="h-12 w-full bg-zinc-800 mb-3 rounded flex items-center justify-center text-zinc-500 font-bold text-xs">NO LOGO</div>
-                    )}
-                    <span className="text-sm font-medium text-white truncate w-full text-center">{channel.name}</span>
-                  </button>
-                ))}
+            
+            <div className="p-6 border-b border-zinc-800 bg-zinc-950">
+              <div className="relative">
+                <SearchIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-zinc-500" />
+                <input 
+                  autoFocus
+                  type="text"
+                  placeholder="Search channels..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-red-600"
+                />
               </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2">
+              {searching ? (
+                <div className="flex justify-center py-12"><Loader2 className="animate-spin text-red-600" size={32} /></div>
+              ) : searchResults.length === 0 ? (
+                <div className="text-center py-12 text-zinc-500">No channels found</div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {searchResults.map(channel => (
+                    <button
+                      key={channel.id}
+                      onClick={() => handleSelectChannel(channel)}
+                      className="flex items-center space-x-3 p-3 rounded-lg hover:bg-zinc-800 text-left group transition-colors focus:outline-none focus:bg-zinc-800 focus:ring-2 focus:ring-red-600"
+                    >
+                      <div className="w-12 h-12 bg-zinc-950 rounded flex items-center justify-center shrink-0 p-1">
+                        {channel.logo ? (
+                          <img src={channel.logo} alt={channel.name} className="max-w-full max-h-full object-contain" />
+                        ) : (
+                          <span className="text-xs text-zinc-600 font-bold">{channel.name.slice(0,2)}</span>
+                        )}
+                      </div>
+                      <div className="overflow-hidden">
+                        <div className="text-white font-medium truncate group-hover:text-red-400">{channel.name}</div>
+                        <div className="text-zinc-500 text-xs truncate">{channel.categories?.[0] || 'Uncategorized'}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -217,7 +253,11 @@ function MultiViewContent() {
 
 export default function MultiViewPage() {
   return (
-    <Suspense fallback={<div className="h-screen flex items-center justify-center bg-zinc-950 text-white">Loading...</div>}>
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center bg-zinc-950">
+        <Loader2 className="animate-spin text-red-600" size={64} />
+      </div>
+    }>
       <MultiViewContent />
     </Suspense>
   );
